@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/urfave/cli/v2"
 
+	"github.com/ethereum-optimism/infra/op-signer/proxy"
 	opservice "github.com/ethereum-optimism/optimism/op-service"
 	oplog "github.com/ethereum-optimism/optimism/op-service/log"
 	opmetrics "github.com/ethereum-optimism/optimism/op-service/metrics"
@@ -30,6 +31,7 @@ func CLIFlags(envPrefix string) []cli.Flag {
 	flags = append(flags, opmetrics.CLIFlags(envPrefix)...)
 	flags = append(flags, oppprof.CLIFlags(envPrefix)...)
 	flags = append(flags, optls.CLIFlags(envPrefix)...)
+	flags = append(flags, proxy.CLIFlags(envPrefix)...)
 	return flags
 }
 
@@ -54,6 +56,7 @@ type Config struct {
 	LogConfig     oplog.CLIConfig
 	MetricsConfig opmetrics.CLIConfig
 	PprofConfig   oppprof.CLIConfig
+	ProxyConfig   proxy.CLIConfig
 }
 
 func (c Config) Check() error {
@@ -69,6 +72,9 @@ func (c Config) Check() error {
 	if err := c.TLSConfig.Check(); err != nil {
 		return err
 	}
+	if err := c.ProxyConfig.Check(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -81,5 +87,6 @@ func NewConfig(ctx *cli.Context) *Config {
 		LogConfig:         oplog.ReadCLIConfig(ctx),
 		MetricsConfig:     opmetrics.ReadCLIConfig(ctx),
 		PprofConfig:       oppprof.ReadCLIConfig(ctx),
+		ProxyConfig:       proxy.ReadCLIConfig(ctx),
 	}
 }
