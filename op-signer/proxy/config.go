@@ -2,10 +2,9 @@ package proxy
 
 import (
 	"errors"
+	opservice "github.com/ethereum-optimism/optimism/op-service"
 	"github.com/urfave/cli/v2"
 	"math"
-
-	opservice "github.com/ethereum-optimism/optimism/op-service"
 )
 
 const (

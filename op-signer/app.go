@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/infra/op-signer/proxy"
 	"os"
 	"sync/atomic"
 
@@ -42,6 +43,9 @@ type SignerApp struct {
 
 	rpc *oprpc.Server
 
+	proxy        *oprpc.Server
+	proxyService *proxy.SignerProxyService
+
 	stopped atomic.Bool
 }
 
@@ -65,6 +69,11 @@ func (s *SignerApp) init(cfg *Config) error {
 	}
 	if err := s.initRPC(cfg); err != nil {
 		return fmt.Errorf("metrics error: %w", err)
+	}
+	if cfg.ProxyConfig.EnableProxy {
+		if err := s.initProxy(cfg); err != nil {
+			return fmt.Errorf("proxy error: %w", err)
+		}
 	}
 	return nil
 }
@@ -158,6 +167,56 @@ func (s *SignerApp) initRPC(cfg *Config) error {
 	s.log.Info("Started op-signer RPC server", "addr", s.rpc.Endpoint())
 
 	return nil
+}
+
+func (s *SignerApp) initProxy(cfg *Config) error {
+	// CA cert of op-signer
+	caCert, err := os.ReadFile(cfg.ProxyConfig.SignerCA)
+	if err != nil {
+		return fmt.Errorf("failed to read tls ca cert: %s", string(caCert))
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	cm, err := certman.New(s.log, cfg.TLSConfig.TLSCert, cfg.TLSConfig.TLSKey)
+	if err != nil {
+		return fmt.Errorf("failed to read tls cert or key: %w", err)
+	}
+	if err := cm.Watch(); err != nil {
+		return fmt.Errorf("failed to start certman watcher: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		GetCertificate: cm.GetCertificate,
+		ClientCAs:      caCertPool,
+		ClientAuth:     tls.VerifyClientCertIfGiven, // necessary for k8s healthz probes, but we check the cert in service/auth.go
+	}
+	serverTlsConfig := &oprpc.ServerTLSConfig{
+		Config:    tlsConfig,
+		CLIConfig: &cfg.TLSConfig,
+	}
+
+	proxyConfig := cfg.ProxyConfig
+	s.proxy = oprpc.NewServer(
+		proxyConfig.ListenAddr,
+		proxyConfig.ListenPort,
+		s.version,
+		oprpc.WithWebsocketEnabled(),
+		oprpc.WithLogger(s.log),
+		oprpc.WithTLSConfig(serverTlsConfig),
+		oprpc.WithMiddleware(service.NewAuthMiddleware()),
+		oprpc.WithHTTPRecorder(opmetrics.NewPromHTTPRecorder(s.registry, "signerproxy")),
+	)
+	s.proxyService = proxy.NewSignerProxyService(s.log)
+	s.proxyService.RegisterAPIs(s.proxy)
+
+	if err := s.proxy.Start(); err != nil {
+		return fmt.Errorf("error starting proxy RPC server: %w", err)
+	}
+	s.log.Info("Started op-signer proxy RPC server", "addr", s.proxy.Endpoint())
+
+	return nil
+
 }
 
 func (s *SignerApp) Start(ctx context.Context) error {
