@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/ethereum-optimism/optimism/op-service/cliapp"
 	"github.com/ethereum-optimism/optimism/op-service/httputil"
@@ -169,6 +170,8 @@ func (s *SignerApp) initRPC(cfg *Config, proxyClients *service.ProxyWSClients) e
 	}
 	s.log.Info("Started op-signer RPC server", "addr", s.rpc.Endpoint())
 
+	s.ConnectProxy(serviceCfg)
+
 	return nil
 }
 
@@ -220,6 +223,41 @@ func (s *SignerApp) initProxy(cfg *Config, proxyClients *service.ProxyWSClients)
 
 	return nil
 
+}
+
+func (s *SignerApp) ConnectProxy(cfg service.SignerServiceConfig) {
+	for _, pc := range cfg.Proxy {
+		if pc.Enable {
+			go func() {
+				ctx := context.Background()
+				c, err := rpc.DialWebsocket(ctx, pc.ProxyName, "")
+				if err != nil {
+					s.log.Warn("Failed to connect to proxy", "name", pc.ProxyName, "err", err)
+					return
+				}
+
+				for _, api := range s.signer.ListAPIs() {
+					if err := c.RegisterName(api.Namespace, api); err != nil {
+						s.log.Warn("Failed to register api for proxy websocket", "name", api.Namespace, "err", err)
+						c.Close()
+						return
+					}
+				}
+
+				var result bool
+				if err := c.CallContext(ctx, &result, "opsignerproxy_serveSigner"); err != nil {
+					s.log.Warn("Failed to establish signer-proxy connection", "err", err)
+					c.Close()
+					return
+				} else if !result {
+					s.log.Warn("Failed to establish signer-proxy connection with server error")
+					c.Close()
+					return
+				}
+				s.log.Info("Connected to op-signer proxy server", "endpoint", pc.ProxyName)
+			}()
+		}
+	}
 }
 
 func (s *SignerApp) Start(ctx context.Context) error {

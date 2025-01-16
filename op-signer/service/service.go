@@ -52,15 +52,23 @@ func NewSignerServiceWithProvider(
 	return &SignerService{&ethService, &opsignerService}
 }
 
+func (s *SignerService) ListAPIs() []rpc.API {
+	return []rpc.API{
+		{
+			Namespace: "eth",
+			Service:   s.eth,
+		},
+		{
+			Namespace: "opsigner",
+			Service:   s.opsigner,
+		},
+	}
+}
+
 func (s *SignerService) RegisterAPIs(server *oprpc.Server) {
-	server.AddAPI(rpc.API{
-		Namespace: "eth",
-		Service:   s.eth,
-	})
-	server.AddAPI(rpc.API{
-		Namespace: "opsigner",
-		Service:   s.opsigner,
-	})
+	for _, api := range s.ListAPIs() {
+		server.AddAPI(api)
+	}
 }
 
 func containsNormalized(s []string, e string) bool {
