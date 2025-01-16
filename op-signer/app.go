@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"github.com/ethereum-optimism/infra/op-signer/proxy"
 	"os"
 	"sync/atomic"
 
@@ -44,7 +43,7 @@ type SignerApp struct {
 	rpc *oprpc.Server
 
 	proxy        *oprpc.Server
-	proxyService *proxy.SignerProxyService
+	proxyService *service.SignerProxyService
 
 	stopped atomic.Bool
 }
@@ -61,17 +60,21 @@ func InitFromConfig(ctx context.Context, log log.Logger, cfg *Config, version st
 }
 
 func (s *SignerApp) init(cfg *Config) error {
+	var proxyClients *service.ProxyWSClients
+	if cfg.ProxyConfig.EnableProxy {
+		proxyClients = &service.ProxyWSClients{}
+	}
 	if err := s.initPprof(cfg); err != nil {
 		return fmt.Errorf("pprof error: %w", err)
 	}
 	if err := s.initMetrics(cfg); err != nil {
 		return fmt.Errorf("metrics error: %w", err)
 	}
-	if err := s.initRPC(cfg); err != nil {
+	if err := s.initRPC(cfg, proxyClients); err != nil {
 		return fmt.Errorf("metrics error: %w", err)
 	}
 	if cfg.ProxyConfig.EnableProxy {
-		if err := s.initProxy(cfg); err != nil {
+		if err := s.initProxy(cfg, proxyClients); err != nil {
 			return fmt.Errorf("proxy error: %w", err)
 		}
 	}
@@ -117,7 +120,7 @@ func (s *SignerApp) initMetrics(cfg *Config) error {
 	return nil
 }
 
-func (s *SignerApp) initRPC(cfg *Config) error {
+func (s *SignerApp) initRPC(cfg *Config, proxyClients *service.ProxyWSClients) error {
 	caCert, err := os.ReadFile(cfg.TLSConfig.TLSCaCert)
 	if err != nil {
 		return fmt.Errorf("failed to read tls ca cert: %s", string(caCert))
@@ -158,7 +161,7 @@ func (s *SignerApp) initRPC(cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to read service config: %w", err)
 	}
-	s.signer = service.NewSignerService(s.log, serviceCfg)
+	s.signer = service.NewSignerService(s.log, serviceCfg, proxyClients)
 	s.signer.RegisterAPIs(s.rpc)
 
 	if err := s.rpc.Start(); err != nil {
@@ -169,7 +172,7 @@ func (s *SignerApp) initRPC(cfg *Config) error {
 	return nil
 }
 
-func (s *SignerApp) initProxy(cfg *Config) error {
+func (s *SignerApp) initProxy(cfg *Config, proxyClients *service.ProxyWSClients) error {
 	// CA cert of op-signer
 	caCert, err := os.ReadFile(cfg.ProxyConfig.SignerCA)
 	if err != nil {
@@ -207,13 +210,13 @@ func (s *SignerApp) initProxy(cfg *Config) error {
 		oprpc.WithMiddleware(service.NewAuthMiddleware()),
 		oprpc.WithHTTPRecorder(opmetrics.NewPromHTTPRecorder(s.registry, "signerproxy")),
 	)
-	s.proxyService = proxy.NewSignerProxyService(s.log)
+	s.proxyService = service.NewSignerProxyService(s.log, proxyClients)
 	s.proxyService.RegisterAPIs(s.proxy)
 
 	if err := s.proxy.Start(); err != nil {
-		return fmt.Errorf("error starting proxy RPC server: %w", err)
+		return fmt.Errorf("error starting proxy RPC(WS) server: %w", err)
 	}
-	s.log.Info("Started op-signer proxy RPC server", "addr", s.proxy.Endpoint())
+	s.log.Info("Started op-signer proxy RPC(WS) server", "addr", s.proxy.Endpoint())
 
 	return nil
 

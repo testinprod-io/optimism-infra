@@ -25,25 +25,30 @@ type EthService struct {
 	logger   log.Logger
 	config   SignerServiceConfig
 	provider provider.SignatureProvider
+
+	pc *ProxyWSClients
 }
 
 type OpsignerSerivce struct {
 	logger   log.Logger
 	config   SignerServiceConfig
 	provider provider.SignatureProvider
+
+	pc *ProxyWSClients
 }
 
-func NewSignerService(logger log.Logger, config SignerServiceConfig) *SignerService {
-	return NewSignerServiceWithProvider(logger, config, provider.NewCloudKMSSignatureProvider(logger))
+func NewSignerService(logger log.Logger, config SignerServiceConfig, proxyClients *ProxyWSClients) *SignerService {
+	return NewSignerServiceWithProvider(logger, config, provider.NewCloudKMSSignatureProvider(logger), proxyClients)
 }
 
 func NewSignerServiceWithProvider(
 	logger log.Logger,
 	config SignerServiceConfig,
 	provider provider.SignatureProvider,
+	proxyClients *ProxyWSClients,
 ) *SignerService {
-	ethService := EthService{logger, config, provider}
-	opsignerService := OpsignerSerivce{logger, config, provider}
+	ethService := EthService{logger, config, provider, proxyClients}
+	opsignerService := OpsignerSerivce{logger, config, provider, proxyClients}
 	return &SignerService{&ethService, &opsignerService}
 }
 
@@ -73,6 +78,14 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, nil)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
+	}
+
+	var result hexutil.Bytes
+	if client, err := s.pc.GetClient(); err == nil {
+		if err := client.CallContext(ctx, &result, "eth_signTransaction", args); err != nil {
+			return nil, fmt.Errorf("proxied eth_signTransaction failed: %w", err)
+		}
+		return result, nil
 	}
 
 	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
@@ -171,6 +184,14 @@ func (s *OpsignerSerivce) SignBlockPayload(ctx context.Context, args signer.Bloc
 	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, args.SenderAddress)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
+	}
+
+	var result hexutil.Bytes
+	if client, err := s.pc.GetClient(); err == nil {
+		if err := client.CallContext(ctx, &result, "opsigner_signBlockPayload", args); err != nil {
+			return nil, fmt.Errorf("proxied opsigner_signBlockPayload failed: %w", err)
+		}
+		return result, nil
 	}
 
 	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
