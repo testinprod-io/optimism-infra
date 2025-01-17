@@ -6,9 +6,11 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"sync/atomic"
 
+	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/urfave/cli/v2"
 
@@ -170,7 +172,11 @@ func (s *SignerApp) initRPC(cfg *Config, proxyClients *service.ProxyWSClients) e
 	}
 	s.log.Info("Started op-signer RPC server", "addr", s.rpc.Endpoint())
 
-	s.ConnectProxy(serviceCfg)
+	proxyTLSConfig := &tls.Config{
+		GetClientCertificate: cm.GetClientCertificate,
+		RootCAs:              caCertPool, // will be default
+	}
+	s.ConnectProxy(serviceCfg, proxyTLSConfig)
 
 	return nil
 }
@@ -225,19 +231,23 @@ func (s *SignerApp) initProxy(cfg *Config, proxyClients *service.ProxyWSClients)
 
 }
 
-func (s *SignerApp) ConnectProxy(cfg service.SignerServiceConfig) {
+func (s *SignerApp) ConnectProxy(cfg service.SignerServiceConfig, tlsConfig *tls.Config) {
 	for _, pc := range cfg.Proxy {
 		if pc.Enable {
 			go func() {
 				ctx := context.Background()
-				c, err := rpc.DialOptions(ctx, pc.ProxyEndpoint)
+				dialer := websocket.Dialer{
+					Proxy:           http.ProxyFromEnvironment,
+					TLSClientConfig: tlsConfig,
+				}
+				c, err := rpc.DialOptions(ctx, pc.ProxyEndpoint, rpc.WithWebsocketDialer(dialer))
 				if err != nil {
 					s.log.Warn("Failed to connect to proxy", "name", pc.ProxyEndpoint, "err", err)
 					return
 				}
 
 				for _, api := range s.signer.ListAPIs() {
-					if err := c.RegisterName(api.Namespace, api); err != nil {
+					if err := c.RegisterName(api.Namespace, api.Service); err != nil {
 						s.log.Warn("Failed to register api for proxy websocket", "name", api.Namespace, "err", err)
 						c.Close()
 						return
