@@ -82,8 +82,14 @@ func containsNormalized(s []string, e string) bool {
 
 // SignTransaction will sign the given transaction with the key configured for the authenticated client
 func (s *EthService) SignTransaction(ctx context.Context, args signer.TransactionArgs) (hexutil.Bytes, error) {
-	clientInfo := ClientInfoFromContext(ctx)
-	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, nil)
+	clientName := ""
+	if clientInfo := ClientInfoFromContext(ctx); clientInfo.ClientName != "" {
+		clientName = clientInfo.ClientName
+	} else if peerInfo := rpc.PeerInfoFromContext(ctx); peerInfo.HTTP.Host != "" {
+		clientName = peerInfo.HTTP.Host
+	}
+
+	authConfig, err := s.config.GetAuthConfigForClient(clientName, nil)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
@@ -96,7 +102,7 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 		return result, nil
 	}
 
-	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
+	labels := prometheus.Labels{"client": clientName, "status": "error", "error": ""}
 	defer func() {
 		MetricSignTransactionTotal.With(labels).Inc()
 	}()
@@ -165,7 +171,7 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 	s.logger.Info(
 		"Signed transaction",
 		"digest", hexutil.Encode(digest.Bytes()),
-		"client.name", clientInfo.ClientName,
+		"client.name", clientName,
 		"client.keyname", authConfig.KeyName,
 		"tx.type", tx.Type(),
 		"tx.raw", hexutil.Encode(txraw),
@@ -188,8 +194,13 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 }
 
 func (s *OpsignerSerivce) SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error) {
-	clientInfo := ClientInfoFromContext(ctx)
-	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, args.SenderAddress)
+	clientName := ""
+	if clientInfo := ClientInfoFromContext(ctx); clientInfo.ClientName != "" {
+		clientName = clientInfo.ClientName
+	} else if peerInfo := rpc.PeerInfoFromContext(ctx); peerInfo.HTTP.Host != "" {
+		clientName = peerInfo.HTTP.Host
+	}
+	authConfig, err := s.config.GetAuthConfigForClient(clientName, args.SenderAddress)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
@@ -202,7 +213,7 @@ func (s *OpsignerSerivce) SignBlockPayload(ctx context.Context, args signer.Bloc
 		return result, nil
 	}
 
-	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
+	labels := prometheus.Labels{"client": clientName, "status": "error", "error": ""}
 	defer func() {
 		MetricSignTransactionTotal.With(labels).Inc()
 	}()

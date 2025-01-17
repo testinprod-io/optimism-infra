@@ -35,7 +35,7 @@ func (s *SignerProxyService) RegisterAPIs(server *oprpc.Server) {
 func (s *OpsignerproxyService) ServeSigner(ctx context.Context) (bool, error) {
 	wsClient, ok := rpc.ClientFromContext(ctx)
 	if !ok {
-		s.logger.Warn("ws client not provideds on opsignerproxy_ServeSigner")
+		s.logger.Warn("ws client not provided on opsignerproxy_ServeSigner")
 		return false, errors.New("ws client not provided on opsignerproxy_ServeSigner")
 	}
 	s.pc.wsClients = append(s.pc.wsClients, wsClient)
