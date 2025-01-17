@@ -52,7 +52,7 @@ func CLIFlags(envPrefix string) []cli.Flag {
 	}
 }
 
-type CLIConfig struct {
+type ProxyCLIConfig struct {
 	EnableProxy bool
 	ListenAddr  string
 	ListenPort  int
@@ -60,7 +60,7 @@ type CLIConfig struct {
 	SignerName  string
 }
 
-func (c CLIConfig) Check() error {
+func (c ProxyCLIConfig) Check() error {
 	if !c.EnableProxy {
 		return nil
 	}
@@ -76,8 +76,8 @@ func (c CLIConfig) Check() error {
 	return nil
 }
 
-func ReadCLIConfig(ctx *cli.Context) CLIConfig {
-	return CLIConfig{
+func ReadProxyCLIConfig(ctx *cli.Context) ProxyCLIConfig {
+	return ProxyCLIConfig{
 		EnableProxy: ctx.Bool(EnableProxyFlagName),
 		ListenAddr:  ctx.String(ListenAddrFlagName),
 		ListenPort:  ctx.Int(PortFlagName),

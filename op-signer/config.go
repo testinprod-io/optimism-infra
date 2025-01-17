@@ -57,7 +57,7 @@ type Config struct {
 	LogConfig     oplog.CLIConfig
 	MetricsConfig opmetrics.CLIConfig
 	PprofConfig   oppprof.CLIConfig
-	ProxyConfig   service.CLIConfig
+	ProxyConfig   service.ProxyCLIConfig
 }
 
 func (c Config) Check() error {
@@ -88,6 +88,6 @@ func NewConfig(ctx *cli.Context) *Config {
 		LogConfig:         oplog.ReadCLIConfig(ctx),
 		MetricsConfig:     opmetrics.ReadCLIConfig(ctx),
 		PprofConfig:       oppprof.ReadCLIConfig(ctx),
-		ProxyConfig:       service.ReadCLIConfig(ctx),
+		ProxyConfig:       service.ReadProxyCLIConfig(ctx),
 	}
 }
