@@ -230,9 +230,9 @@ func (s *SignerApp) ConnectProxy(cfg service.SignerServiceConfig) {
 		if pc.Enable {
 			go func() {
 				ctx := context.Background()
-				c, err := rpc.DialWebsocket(ctx, pc.ProxyName, "")
+				c, err := rpc.DialOptions(ctx, pc.ProxyEndpoint)
 				if err != nil {
-					s.log.Warn("Failed to connect to proxy", "name", pc.ProxyName, "err", err)
+					s.log.Warn("Failed to connect to proxy", "name", pc.ProxyEndpoint, "err", err)
 					return
 				}
 
@@ -254,7 +254,7 @@ func (s *SignerApp) ConnectProxy(cfg service.SignerServiceConfig) {
 					c.Close()
 					return
 				}
-				s.log.Info("Connected to op-signer proxy server", "endpoint", pc.ProxyName)
+				s.log.Info("Connected to op-signer proxy server", "endpoint", pc.ProxyEndpoint)
 			}()
 		}
 	}

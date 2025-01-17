@@ -30,8 +30,8 @@ func (c AuthConfig) MaxValueToInt() *big.Int {
 }
 
 type ProxyConfig struct {
-	ProxyName string `yaml:"proxyName"`
-	Enable    bool   `yaml:"enable"`
+	ProxyEndpoint string `yaml:"proxyEndpoint"`
+	Enable        bool   `yaml:"enable"`
 }
 
 type SignerServiceConfig struct {
@@ -61,12 +61,12 @@ func ReadConfig(path string) (SignerServiceConfig, error) {
 		}
 	}
 	for _, proxyConfig := range config.Proxy {
-		u, err := url.Parse(proxyConfig.ProxyName)
+		u, err := url.Parse(proxyConfig.ProxyEndpoint)
 		if err != nil {
-			return config, fmt.Errorf("invalid proxyName '%s': %w", proxyConfig.ProxyName, err)
+			return config, fmt.Errorf("invalid proxyEndpoint '%s': %w", proxyConfig.ProxyEndpoint, err)
 		}
 		if u.Scheme != "ws" && u.Scheme != "wss" {
-			return config, fmt.Errorf("invalid proxyName '%s': must have ws/wss scheme", proxyConfig.ProxyName)
+			return config, fmt.Errorf("invalid proxyEndpoint '%s': must have ws/wss scheme", proxyConfig.ProxyEndpoint)
 		}
 	}
 	return config, err
