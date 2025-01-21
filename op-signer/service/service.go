@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -86,7 +87,9 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 	if clientInfo := ClientInfoFromContext(ctx); clientInfo.ClientName != "" {
 		clientName = clientInfo.ClientName
 	} else if peerInfo := rpc.PeerInfoFromContext(ctx); peerInfo.HTTP.Host != "" {
-		clientName = peerInfo.HTTP.Host
+		if u, err := url.Parse(peerInfo.HTTP.Host); err == nil {
+			clientName = u.Hostname()
+		}
 	}
 
 	authConfig, err := s.config.GetAuthConfigForClient(clientName, nil)
