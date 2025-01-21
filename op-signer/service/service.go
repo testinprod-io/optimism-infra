@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -17,39 +16,42 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/signer"
 )
 
+type EthServer interface {
+	SignTransaction(ctx context.Context, args signer.TransactionArgs) (hexutil.Bytes, error)
+}
+
+type OpsignerServer interface {
+	SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error)
+}
+
 type SignerService struct {
-	eth      *EthService
-	opsigner *OpsignerSerivce
+	eth      EthServer
+	opsigner OpsignerServer
 }
 
 type EthService struct {
 	logger   log.Logger
 	config   SignerServiceConfig
 	provider provider.SignatureProvider
-
-	pc *ProxyWSClients
 }
 
-type OpsignerSerivce struct {
+type OpsignerService struct {
 	logger   log.Logger
 	config   SignerServiceConfig
 	provider provider.SignatureProvider
-
-	pc *ProxyWSClients
 }
 
-func NewSignerService(logger log.Logger, config SignerServiceConfig, proxyClients *ProxyWSClients) *SignerService {
-	return NewSignerServiceWithProvider(logger, config, provider.NewCloudKMSSignatureProvider(logger), proxyClients)
+func NewSignerService(logger log.Logger, config SignerServiceConfig) *SignerService {
+	return NewSignerServiceWithProvider(logger, config, provider.NewCloudKMSSignatureProvider(logger))
 }
 
 func NewSignerServiceWithProvider(
 	logger log.Logger,
 	config SignerServiceConfig,
 	provider provider.SignatureProvider,
-	proxyClients *ProxyWSClients,
 ) *SignerService {
-	ethService := EthService{logger, config, provider, proxyClients}
-	opsignerService := OpsignerSerivce{logger, config, provider, proxyClients}
+	ethService := EthService{logger, config, provider}
+	opsignerService := OpsignerService{logger, config, provider}
 	return &SignerService{&ethService, &opsignerService}
 }
 
@@ -83,29 +85,13 @@ func containsNormalized(s []string, e string) bool {
 
 // SignTransaction will sign the given transaction with the key configured for the authenticated client
 func (s *EthService) SignTransaction(ctx context.Context, args signer.TransactionArgs) (hexutil.Bytes, error) {
-	clientName := ""
-	if clientInfo := ClientInfoFromContext(ctx); clientInfo.ClientName != "" {
-		clientName = clientInfo.ClientName
-	} else if peerInfo := rpc.PeerInfoFromContext(ctx); peerInfo.HTTP.Host != "" {
-		if u, err := url.Parse(peerInfo.HTTP.Host); err == nil {
-			clientName = u.Hostname()
-		}
-	}
-
-	authConfig, err := s.config.GetAuthConfigForClient(clientName, nil)
+	clientInfo := ClientInfoFromContext(ctx)
+	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, nil)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
 
-	var result hexutil.Bytes
-	if client, err := s.pc.GetClient(); err == nil {
-		if err := client.CallContext(ctx, &result, "eth_signTransaction", args); err != nil {
-			return nil, fmt.Errorf("proxied eth_signTransaction failed: %w", err)
-		}
-		return result, nil
-	}
-
-	labels := prometheus.Labels{"client": clientName, "status": "error", "error": ""}
+	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
 	defer func() {
 		MetricSignTransactionTotal.With(labels).Inc()
 	}()
@@ -174,7 +160,7 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 	s.logger.Info(
 		"Signed transaction",
 		"digest", hexutil.Encode(digest.Bytes()),
-		"client.name", clientName,
+		"client.name", clientInfo.ClientName,
 		"client.keyname", authConfig.KeyName,
 		"tx.type", tx.Type(),
 		"tx.raw", hexutil.Encode(txraw),
@@ -196,27 +182,14 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 	return hexutil.Bytes(txraw), nil
 }
 
-func (s *OpsignerSerivce) SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error) {
-	clientName := ""
-	if clientInfo := ClientInfoFromContext(ctx); clientInfo.ClientName != "" {
-		clientName = clientInfo.ClientName
-	} else if peerInfo := rpc.PeerInfoFromContext(ctx); peerInfo.HTTP.Host != "" {
-		clientName = peerInfo.HTTP.Host
-	}
-	authConfig, err := s.config.GetAuthConfigForClient(clientName, args.SenderAddress)
+func (s *OpsignerService) SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error) {
+	clientInfo := ClientInfoFromContext(ctx)
+	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, args.SenderAddress)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
 
-	var result hexutil.Bytes
-	if client, err := s.pc.GetClient(); err == nil {
-		if err := client.CallContext(ctx, &result, "opsigner_signBlockPayload", args); err != nil {
-			return nil, fmt.Errorf("proxied opsigner_signBlockPayload failed: %w", err)
-		}
-		return result, nil
-	}
-
-	labels := prometheus.Labels{"client": clientName, "status": "error", "error": ""}
+	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
 	defer func() {
 		MetricSignTransactionTotal.With(labels).Inc()
 	}()
