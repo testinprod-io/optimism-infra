@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"net/url"
-
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -57,15 +55,8 @@ type EthProxyService struct {
 }
 
 func (s *EthProxyService) SignTransaction(ctx context.Context, args signer.TransactionArgs) (hexutil.Bytes, error) {
-	clientName := ""
-	u, err := url.Parse(rpc.PeerInfoFromContext(ctx).HTTP.Host)
-	if err == nil {
-		clientName = u.Hostname()
-	} else {
-		s.logger.Warn("failed to parse ws peer hostname", "err", err)
-	}
-
-	if _, err := s.config.GetAuthConfigForClient(clientName, nil); err != nil {
+	clientInfo := ClientInfoFromContext(ctx)
+	if _, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, nil); err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
 
@@ -83,20 +74,13 @@ type OpsignerProxyService struct {
 }
 
 func (s *OpsignerProxyService) SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error) {
-	clientName := ""
-	u, err := url.Parse(rpc.PeerInfoFromContext(ctx).HTTP.Host)
-	if err == nil {
-		clientName = u.Hostname()
-	} else {
-		s.logger.Warn("failed to parse ws peer hostname", "err", err)
-	}
-
-	if _, err := s.config.GetAuthConfigForClient(clientName, args.SenderAddress); err != nil {
+	clientInfo := ClientInfoFromContext(ctx)
+	if _, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, args.SenderAddress); err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
 
 	var result hexutil.Bytes
-	if err := s.sc.Call(ctx, &result, "eth_signTransaction", args); err != nil {
+	if err := s.sc.Call(ctx, &result, "opsigner_signBlockPayload", args); err != nil {
 		return nil, rpc.HTTPError{StatusCode: 500, Status: "Proxy Error", Body: []byte(err.Error())}
 	}
 	return result, nil

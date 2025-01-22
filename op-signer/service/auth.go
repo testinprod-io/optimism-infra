@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"net/http"
+	"net/url"
+
+	"github.com/ethereum/go-ethereum/rpc"
 
 	oprpc "github.com/ethereum-optimism/optimism/op-service/rpc"
 	optls "github.com/ethereum-optimism/optimism/op-service/tls"
@@ -41,4 +44,13 @@ func NewAuthMiddleware() oprpc.Middleware {
 func ClientInfoFromContext(ctx context.Context) ClientInfo {
 	info, _ := ctx.Value(clientInfoContextKey{}).(ClientInfo)
 	return info
+}
+
+func PeerHostnameFromContext(ctx context.Context) string {
+	peerInfo := rpc.PeerInfoFromContext(ctx)
+	u, err := url.Parse(peerInfo.HTTP.Host)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }
