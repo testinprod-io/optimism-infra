@@ -10,6 +10,8 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+var NoClientsAvailableError = rpc.HTTPError{StatusCode: 500, Status: "Proxy Error", Body: []byte("no clients available")}
+
 type SignerClients struct {
 	wsClients []*rpc.Client
 	mu        sync.Mutex
@@ -40,17 +42,20 @@ func (sc *SignerClients) removeClient(c *rpc.Client) {
 func (sc *SignerClients) Call(ctx context.Context, result interface{}, method string, args ...interface{}) error {
 	localClients := sc.getCopy()
 	if len(localClients) == 0 {
-		return errors.New("no clients available")
+		return NoClientsAvailableError
 	}
 
 	for _, c := range localClients {
 		err := c.CallContext(ctx, result, method, args...)
-		if err == nil {
-			return nil
+		var rpcErr rpc.Error
+		if err == nil || errors.As(err, &rpcErr) {
+			return err
 		}
+
+		// if non-RPC error, prevent connection from being re-used
 		log.Warn(fmt.Errorf("error during proxy call for %s: %w", method, err).Error())
 		sc.removeClient(c)
 	}
 
-	return errors.New("no clients available")
+	return NoClientsAvailableError
 }

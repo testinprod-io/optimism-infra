@@ -62,7 +62,7 @@ func (s *EthProxyService) SignTransaction(ctx context.Context, args signer.Trans
 
 	var result hexutil.Bytes
 	if err := s.sc.Call(ctx, &result, "eth_signTransaction", args); err != nil {
-		return nil, rpc.HTTPError{StatusCode: 500, Status: "Proxy Error", Body: []byte(err.Error())}
+		return nil, err
 	}
 	return result, nil
 }
@@ -81,7 +81,7 @@ func (s *OpsignerProxyService) SignBlockPayload(ctx context.Context, args signer
 
 	var result hexutil.Bytes
 	if err := s.sc.Call(ctx, &result, "opsigner_signBlockPayload", args); err != nil {
-		return nil, rpc.HTTPError{StatusCode: 500, Status: "Proxy Error", Body: []byte(err.Error())}
+		return nil, err
 	}
 	return result, nil
 }
