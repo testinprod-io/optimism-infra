@@ -172,6 +172,7 @@ func (s *SignerApp) initRPC(cfg *Config) error {
 	if len(serviceCfg.Proxy) > 0 {
 		proxyTLSConfig := &tls.Config{
 			GetClientCertificate: cm.GetClientCertificate,
+			// RootCAs:              caCertPool,  // for testing
 		}
 		s.ConnectProxy(serviceCfg, proxyTLSConfig)
 	}
@@ -180,7 +181,7 @@ func (s *SignerApp) initRPC(cfg *Config) error {
 }
 
 func (s *SignerApp) initProxy(cfg *Config) error {
-	sc := &service.SignerClients{}
+	sc := service.NewSignerClients()
 
 	// init ws server for op-signer
 	// client (op-signer) CA must be trusted

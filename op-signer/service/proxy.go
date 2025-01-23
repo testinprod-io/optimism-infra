@@ -38,7 +38,7 @@ func (s *WSService) ServeSigner(ctx context.Context) (bool, error) {
 		s.logger.Warn("ws client not provided on opsignerproxy_ServeSigner")
 		return false, errors.New("ws client not provided on opsignerproxy_ServeSigner")
 	}
-	s.sc.wsClients = append(s.sc.wsClients, wsClient)
+	s.sc.AddClient(wsClient)
 	return true, nil
 }
 
