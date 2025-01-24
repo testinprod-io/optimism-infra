@@ -189,7 +189,7 @@ func (s *SignerApp) initProxy(cfg *Config) error {
 	wsCaCertPool := x509.NewCertPool()
 	wsCaCertPool.AppendCertsFromPEM(wsCaCert)
 
-	wsCm, err := certman.New(s.log, cfg.TLSConfig.TLSCert, cfg.TLSConfig.TLSKey)
+	wsCm, err := certman.New(s.log, cfg.ProxyConfig.TLSCert, cfg.ProxyConfig.TLSKey)
 	if err != nil {
 		return fmt.Errorf("failed to read tls cert or key: %w", err)
 	}

@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	EnableProxyFlagName  = "proxy.enabled"
-	ListenAddrFlagName   = "proxy.addr"
-	PortFlagName         = "proxy.port"
-	SignerCACertFlagName = "proxy.signer.ca"
-	SignerNameFlagName   = "proxy.signer.name"
+	EnableProxyFlagName   = "proxy.enabled"
+	ListenAddrFlagName    = "proxy.addr"
+	PortFlagName          = "proxy.port"
+	SignerCACertFlagName  = "proxy.signer.ca"
+	SignerNameFlagName    = "proxy.signer.name"
+	SignerTlsCertFlagName = "proxy.signer.tls.cert"
+	SignerTlsKeyFlagName  = "proxy.signer.tls.key"
 )
 
 var ErrInvalidPort = errors.New("invalid RPC port")
@@ -49,6 +51,18 @@ func CLIFlags(envPrefix string) []cli.Flag {
 			Value:   "",
 			EnvVars: opservice.PrefixEnvVar(envPrefix, "PROXY_SIGNER_NAME"),
 		},
+		&cli.StringFlag{
+			Name:    SignerTlsCertFlagName,
+			Usage:   "op-signer TLS certificate file path, for TLS",
+			Value:   "",
+			EnvVars: opservice.PrefixEnvVar(envPrefix, "PROXY_SIGNER_TLS_CERT"),
+		},
+		&cli.StringFlag{
+			Name:    SignerTlsKeyFlagName,
+			Usage:   "op-signer TLS private key file path, for TLS",
+			Value:   "",
+			EnvVars: opservice.PrefixEnvVar(envPrefix, "PROXY_SIGNER_TLS_KEY"),
+		},
 	}
 }
 
@@ -58,6 +72,8 @@ type ProxyCLIConfig struct {
 	ListenPort  int
 	SignerCA    string
 	SignerName  string
+	TLSCert     string
+	TLSKey      string
 }
 
 func (c ProxyCLIConfig) Check() error {
@@ -69,7 +85,7 @@ func (c ProxyCLIConfig) Check() error {
 		return ErrInvalidPort
 	}
 
-	if c.SignerCA == "" || c.SignerName == "" {
+	if c.SignerCA == "" || c.SignerName == "" || c.TLSCert == "" || c.TLSKey == "" {
 		return ErrMissingSignerConfig
 	}
 
@@ -83,5 +99,7 @@ func ReadProxyCLIConfig(ctx *cli.Context) ProxyCLIConfig {
 		ListenPort:  ctx.Int(PortFlagName),
 		SignerCA:    ctx.String(SignerCACertFlagName),
 		SignerName:  ctx.String(SignerNameFlagName),
+		TLSCert:     ctx.String(SignerTlsCertFlagName),
+		TLSKey:      ctx.String(SignerTlsKeyFlagName),
 	}
 }
