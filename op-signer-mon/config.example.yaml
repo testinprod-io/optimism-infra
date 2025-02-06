@@ -1,0 +1,26 @@
+log_level: debug
+dry_run: false
+
+metrics:
+  enabled: true
+  host: 0.0.0.0
+  port: 7300
+
+healthz:
+  enabled: true
+  host: 0.0.0.0
+  port: 8080
+
+signer:
+  address: localhost
+  port: 8080
+  tls_ca_cert: tls/tls_ca.cert
+  tls_cert: tls/tls.cert
+  tls_key: tls/tls.key
+
+rpc_options:
+  from_address: AAAA
+  chain_id: 901
+
+ping_interval: 5s
+request_interval: 5min
