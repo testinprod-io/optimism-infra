@@ -16,9 +16,17 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/signer"
 )
 
+type EthServer interface {
+	SignTransaction(ctx context.Context, args signer.TransactionArgs) (hexutil.Bytes, error)
+}
+
+type OpsignerServer interface {
+	SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error)
+}
+
 type SignerService struct {
-	eth      *EthService
-	opsigner *OpsignerSerivce
+	eth      EthServer
+	opsigner OpsignerServer
 }
 
 type EthService struct {
@@ -27,7 +35,7 @@ type EthService struct {
 	provider provider.SignatureProvider
 }
 
-type OpsignerSerivce struct {
+type OpsignerService struct {
 	logger   log.Logger
 	config   SignerServiceConfig
 	provider provider.SignatureProvider
@@ -43,19 +51,27 @@ func NewSignerServiceWithProvider(
 	provider provider.SignatureProvider,
 ) *SignerService {
 	ethService := EthService{logger, config, provider}
-	opsignerService := OpsignerSerivce{logger, config, provider}
+	opsignerService := OpsignerService{logger, config, provider}
 	return &SignerService{&ethService, &opsignerService}
 }
 
+func (s *SignerService) ListAPIs() []rpc.API {
+	return []rpc.API{
+		{
+			Namespace: "eth",
+			Service:   s.eth,
+		},
+		{
+			Namespace: "opsigner",
+			Service:   s.opsigner,
+		},
+	}
+}
+
 func (s *SignerService) RegisterAPIs(server *oprpc.Server) {
-	server.AddAPI(rpc.API{
-		Namespace: "eth",
-		Service:   s.eth,
-	})
-	server.AddAPI(rpc.API{
-		Namespace: "opsigner",
-		Service:   s.opsigner,
-	})
+	for _, api := range s.ListAPIs() {
+		server.AddAPI(api)
+	}
 }
 
 func containsNormalized(s []string, e string) bool {
@@ -69,13 +85,20 @@ func containsNormalized(s []string, e string) bool {
 
 // SignTransaction will sign the given transaction with the key configured for the authenticated client
 func (s *EthService) SignTransaction(ctx context.Context, args signer.TransactionArgs) (hexutil.Bytes, error) {
-	clientInfo := ClientInfoFromContext(ctx)
-	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, nil)
+	var clientName string
+	if clientInfo := ClientInfoFromContext(ctx); clientInfo.ClientName != "" {
+		clientName = clientInfo.ClientName
+	} else {
+		// ClientInfo does not exist on proxy connections
+		clientName = PeerHostnameFromContext(ctx)
+	}
+
+	authConfig, err := s.config.GetAuthConfigForClient(clientName, nil)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
 
-	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
+	labels := prometheus.Labels{"client": clientName, "status": "error", "error": ""}
 	defer func() {
 		MetricSignTransactionTotal.With(labels).Inc()
 	}()
@@ -144,7 +167,7 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 	s.logger.Info(
 		"Signed transaction",
 		"digest", hexutil.Encode(digest.Bytes()),
-		"client.name", clientInfo.ClientName,
+		"client.name", clientName,
 		"client.keyname", authConfig.KeyName,
 		"tx.type", tx.Type(),
 		"tx.raw", hexutil.Encode(txraw),
@@ -166,14 +189,21 @@ func (s *EthService) SignTransaction(ctx context.Context, args signer.Transactio
 	return hexutil.Bytes(txraw), nil
 }
 
-func (s *OpsignerSerivce) SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error) {
-	clientInfo := ClientInfoFromContext(ctx)
-	authConfig, err := s.config.GetAuthConfigForClient(clientInfo.ClientName, args.SenderAddress)
+func (s *OpsignerService) SignBlockPayload(ctx context.Context, args signer.BlockPayloadArgs) (hexutil.Bytes, error) {
+	var clientName string
+	if clientInfo := ClientInfoFromContext(ctx); clientInfo.ClientName != "" {
+		clientName = clientInfo.ClientName
+	} else {
+		// ClientInfo does not exist on proxy connections
+		clientName = PeerHostnameFromContext(ctx)
+	}
+
+	authConfig, err := s.config.GetAuthConfigForClient(clientName, args.SenderAddress)
 	if err != nil {
 		return nil, rpc.HTTPError{StatusCode: 403, Status: "Forbidden", Body: []byte(err.Error())}
 	}
 
-	labels := prometheus.Labels{"client": clientInfo.ClientName, "status": "error", "error": ""}
+	labels := prometheus.Labels{"client": clientName, "status": "error", "error": ""}
 	defer func() {
 		MetricSignTransactionTotal.With(labels).Inc()
 	}()
