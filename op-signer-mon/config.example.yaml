@@ -1,5 +1,4 @@
 log_level: debug
-dry_run: false
 
 metrics:
   enabled: true
@@ -12,15 +11,15 @@ healthz:
   port: 8080
 
 signer:
-  address: localhost
+  address: http://localhost
   port: 8080
-  tls_ca_cert: tls/tls_ca.cert
-  tls_cert: tls/tls.cert
+  tls_ca_cert: tls/ca.crt
+  tls_cert: tls/tls.crt
   tls_key: tls/tls.key
 
 rpc_options:
-  from_address: AAAA
+  from_address: 0xaD4796D21431A3d4272A681CE67B0236f1A12345
   chain_id: 901
 
 ping_interval: 5s
-request_interval: 5min
+request_interval: 5m

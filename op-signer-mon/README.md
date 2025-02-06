@@ -4,7 +4,7 @@ op-signer monitor
 
 ## Setup
 
-Install go1.18
+Install go1.22
 
 ```bash
 make build
