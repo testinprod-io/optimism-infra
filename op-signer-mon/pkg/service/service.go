@@ -3,14 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
 
 	"github.com/ethereum-optimism/optimism/op-signer-mon/pkg/config"
 	"github.com/ethereum-optimism/optimism/op-signer-mon/pkg/metrics"
 	"github.com/ethereum-optimism/optimism/op-signer-mon/pkg/monitor"
 
 	"github.com/ethereum/go-ethereum/log"
-	"net"
-	"net/http"
 )
 
 type Service struct {

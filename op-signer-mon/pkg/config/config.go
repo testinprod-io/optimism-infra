@@ -2,15 +2,13 @@ package config
 
 import (
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 	"os"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
-
-	_ "gopkg.in/yaml.v3"
 )
 
 type Config struct {

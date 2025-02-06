@@ -92,7 +92,7 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 			metrics.RecordErrorDetails(endpoint, err)
 		}
 
-		log.Debug("finisehd RPC", "latency", latency, "err", err)
+		log.Debug("finished RPC", "latency", latency, "err", err)
 	}()
 
 	cert, err := tls.LoadX509KeyPair(p.config.SignerConfig.TLSCert, p.config.SignerConfig.TLSKey)

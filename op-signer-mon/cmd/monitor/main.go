@@ -17,20 +17,11 @@ import (
 	"github.com/ethereum-optimism/optimism/op-signer-mon/pkg/service"
 )
 
-var (
-	GitVersion = ""
-	GitCommit  = ""
-	GitDate    = ""
-)
-
 func main() {
 	oplog.SetGlobalLogHandler(slog.NewJSONHandler(
 		os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	log.Info("initializing",
-		"version", GitVersion,
-		"commit", GitCommit,
-		"date", GitDate)
+	log.Info("initializing")
 
 	if len(os.Args) < 2 {
 		log.Crit("must specify a config file on the command line")
