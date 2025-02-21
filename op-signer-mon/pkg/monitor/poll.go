@@ -50,7 +50,6 @@ type RPCError struct {
 
 func (p *Poller) pollPing(ctx context.Context) (err error) {
 	start := time.Now()
-
 	parsedURL, err := url.Parse(p.config.SignerConfig.Address)
 	if err != nil {
 		return fmt.Errorf("failed to parse URL: %w", err)
@@ -59,23 +58,50 @@ func (p *Poller) pollPing(ctx context.Context) (err error) {
 	host := parsedURL.Hostname()
 	address := net.JoinHostPort(host, p.config.SignerConfig.Port)
 
-	dialer := net.Dialer{Timeout: 5 * time.Second}
-	conn, err := dialer.Dial("tcp", address)
-	if err == nil {
-		defer conn.Close()
-	}
+	defer func() {
+		latency := time.Since(start)
 
-	latency := time.Since(start)
+		log.Debug("finished ping", "latency", latency, "err", err)
 
-	metrics.RecordPingSuccess(address, err == nil)
-	metrics.RecordPingLatency(address, latency)
+		metrics.RecordPingSuccess(address, err == nil)
+		metrics.RecordPingLatency(address, latency)
+		if err != nil {
+			metrics.RecordErrorDetails(address, err)
+		}
+	}()
+
+	cert, err := tls.LoadX509KeyPair(p.config.SignerConfig.TLSCert, p.config.SignerConfig.TLSKey)
 	if err != nil {
-		metrics.RecordErrorDetails(address, err)
+		err = fmt.Errorf("failed to load client certificate and key", "err", err)
+		return
 	}
 
-	log.Debug("finished ping", "latency", latency, "err", err)
+	caCert, err := os.ReadFile(p.config.SignerConfig.TLSCaCert)
+	if err != nil {
+		err = fmt.Errorf("failed to read CA certificate file", "err", err)
+		return
+	}
 
-	return err
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		err = fmt.Errorf("failed to append CA certificate")
+		return
+	}
+
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
+	}
+	conn, err := tls.DialWithDialer(dialer, "tcp", address, tlsConfig)
+
+	if err == nil {
+		defer func() {
+			err = conn.Close()
+		}()
+	}
+
+	return
 }
 
 func (p *Poller) pollRPC(ctx context.Context) (err error) {
