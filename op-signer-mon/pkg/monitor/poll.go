@@ -17,6 +17,7 @@ import (
 
 	"github.com/ethereum-optimism/optimism/op-signer-mon/pkg/metrics"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -149,6 +150,7 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 	}
 
 	// Construct the JSON request body.
+	payloadHash := crypto.Keccak256([]byte("dummy"))
 	reqBody := RequestBody{
 		JSONRPC: "2.0",
 		Method:  "opsigner_signBlockPayload",
@@ -156,8 +158,8 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 			{
 				Domain:        [32]byte{},
 				ChainID:       p.config.RPCOptions.ChainID,
-				PayloadHash:   []byte("c0ffee"),
 				SenderAddress: p.config.RPCOptions.FromAddress,
+				PayloadHash:   payloadHash,
 			},
 		},
 		ID: 1,
