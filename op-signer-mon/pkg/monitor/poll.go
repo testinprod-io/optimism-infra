@@ -128,6 +128,13 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 		return
 	}
 
+	certExpiry, err := getCertExpiry(cert)
+	if err == nil {
+		metrics.RecordCertExpiry(endpoint, certExpiry)
+	} else {
+		log.Error("failed to get remaining time", "err", err)
+	}
+
 	caCert, err := os.ReadFile(p.config.SignerConfig.TLSCaCert)
 	if err != nil {
 		err = fmt.Errorf("failed to read CA certificate file", "err", err)
@@ -209,4 +216,15 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 
 	log.Debug("received RPC response", "body", body)
 	return
+}
+
+func getCertExpiry(cert tls.Certificate) (time.Duration, error) {
+	if len(cert.Certificate) == 0 {
+		return 0, fmt.Errorf("empty cert")
+	}
+	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return 0, err
+	}
+	return time.Until(x509Cert.NotAfter), nil
 }
