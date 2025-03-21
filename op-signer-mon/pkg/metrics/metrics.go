@@ -51,6 +51,12 @@ var (
 		Name:      "rpc_latency",
 		Help:      "RPC latency per network, node and method (ms)",
 	}, []string{"node"})
+
+	certExpiry = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: MetricsNamespace,
+		Name:      "cert_expiry_seconds",
+		Help:      "Seconds remaining until TLS certificate expires",
+	}, []string{"node"})
 )
 
 func errLabel(err error) string {
@@ -114,6 +120,16 @@ func RecordRPCSuccess(node string, success bool) {
 			"success", success)
 	}
 	rpcSuccess.WithLabelValues(node).Set(boolToFloat64(success))
+}
+
+func RecordCertExpiry(node string, expiry time.Duration) {
+	if Debug {
+		log.Debug("metric set",
+			"m", "cert_expiry_seconds",
+			"node", node,
+			"expiry", expiry.Seconds())
+	}
+	certExpiry.WithLabelValues(node).Set(float64(expiry.Seconds()))
 }
 
 func boolToFloat64(b bool) float64 {
