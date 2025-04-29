@@ -9,6 +9,8 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/oppprof"
 	oprpc "github.com/ethereum-optimism/optimism/op-service/rpc"
 	optls "github.com/ethereum-optimism/optimism/op-service/tls"
+
+	"github.com/ethereum-optimism/infra/op-signer/service"
 )
 
 const (
@@ -30,6 +32,7 @@ func CLIFlags(envPrefix string) []cli.Flag {
 	flags = append(flags, opmetrics.CLIFlags(envPrefix)...)
 	flags = append(flags, oppprof.CLIFlags(envPrefix)...)
 	flags = append(flags, optls.CLIFlags(envPrefix)...)
+	flags = append(flags, service.CLIFlags(envPrefix)...)
 	return flags
 }
 
@@ -54,6 +57,7 @@ type Config struct {
 	LogConfig     oplog.CLIConfig
 	MetricsConfig opmetrics.CLIConfig
 	PprofConfig   oppprof.CLIConfig
+	ProxyConfig   service.ProxyCLIConfig
 }
 
 func (c Config) Check() error {
@@ -69,6 +73,9 @@ func (c Config) Check() error {
 	if err := c.TLSConfig.Check(); err != nil {
 		return err
 	}
+	if err := c.ProxyConfig.Check(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -81,5 +88,6 @@ func NewConfig(ctx *cli.Context) *Config {
 		LogConfig:         oplog.ReadCLIConfig(ctx),
 		MetricsConfig:     opmetrics.ReadCLIConfig(ctx),
 		PprofConfig:       oppprof.ReadCLIConfig(ctx),
+		ProxyConfig:       service.ReadProxyCLIConfig(ctx),
 	}
 }

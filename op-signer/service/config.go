@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/url"
 	"os"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -28,8 +29,14 @@ func (c AuthConfig) MaxValueToInt() *big.Int {
 	return hexutil.MustDecodeBig(c.MaxValue)
 }
 
+type ProxyConfig struct {
+	ProxyEndpoint string `yaml:"proxyEndpoint"`
+	Enable        bool   `yaml:"enable"`
+}
+
 type SignerServiceConfig struct {
-	Auth []AuthConfig `yaml:"auth"`
+	Auth  []AuthConfig  `yaml:"auth"`
+	Proxy []ProxyConfig `yaml:"proxy"`
 }
 
 func ReadConfig(path string) (SignerServiceConfig, error) {
@@ -51,6 +58,15 @@ func ReadConfig(path string) (SignerServiceConfig, error) {
 					return config, fmt.Errorf("invalid maxValue '%s' in auth config: %w", toAddress, err)
 				}
 			}
+		}
+	}
+	for _, proxyConfig := range config.Proxy {
+		u, err := url.Parse(proxyConfig.ProxyEndpoint)
+		if err != nil {
+			return config, fmt.Errorf("invalid proxyEndpoint '%s': %w", proxyConfig.ProxyEndpoint, err)
+		}
+		if u.Scheme != "ws" && u.Scheme != "wss" {
+			return config, fmt.Errorf("invalid proxyEndpoint '%s': must have ws/wss scheme", proxyConfig.ProxyEndpoint)
 		}
 	}
 	return config, err
