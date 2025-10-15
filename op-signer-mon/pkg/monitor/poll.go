@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -49,6 +50,13 @@ type RPCError struct {
 	Message string `json:"message"`
 }
 
+const (
+	rpcMaxAttempts       = 2
+	rpcInitialBackoff    = 500 * time.Millisecond
+	rpcRequestTimeout    = 3 * time.Second
+	rpcBackoffMultiplier = 2
+)
+
 func (p *Poller) pollPing(ctx context.Context) (err error) {
 	start := time.Now()
 	parsedURL, err := url.Parse(p.config.SignerConfig.Address)
@@ -73,13 +81,13 @@ func (p *Poller) pollPing(ctx context.Context) (err error) {
 
 	cert, err := tls.LoadX509KeyPair(p.config.SignerConfig.TLSCert, p.config.SignerConfig.TLSKey)
 	if err != nil {
-		err = fmt.Errorf("failed to load client certificate and key", "err", err)
+		err = fmt.Errorf("failed to load client certificate and key: %w", err)
 		return
 	}
 
 	caCert, err := os.ReadFile(p.config.SignerConfig.TLSCaCert)
 	if err != nil {
-		err = fmt.Errorf("failed to read CA certificate file", "err", err)
+		err = fmt.Errorf("failed to read CA certificate file: %w", err)
 		return
 	}
 
@@ -124,7 +132,7 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 
 	cert, err := tls.LoadX509KeyPair(p.config.SignerConfig.TLSCert, p.config.SignerConfig.TLSKey)
 	if err != nil {
-		err = fmt.Errorf("failed to load client certificate and key", "err", err)
+		err = fmt.Errorf("failed to load client certificate and key: %w", err)
 		return
 	}
 
@@ -137,7 +145,7 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 
 	caCert, err := os.ReadFile(p.config.SignerConfig.TLSCaCert)
 	if err != nil {
-		err = fmt.Errorf("failed to read CA certificate file", "err", err)
+		err = fmt.Errorf("failed to read CA certificate file: %w", err)
 		return
 	}
 	caCertPool := x509.NewCertPool()
@@ -153,7 +161,7 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 				RootCAs:      caCertPool,
 			},
 		},
-		Timeout: time.Second * 5,
+		Timeout: rpcRequestTimeout,
 	}
 
 	// Construct the JSON request body.
@@ -174,38 +182,70 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		err = fmt.Errorf("error marshaling JSON", "err", err)
-		return
-	}
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(jsonData))
-	if err != nil {
-		err = fmt.Errorf("error creating HTTP request", "err", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		err = fmt.Errorf("HTTP request failed", "err", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		err = fmt.Errorf("rror reading response", "err", err)
+		err = fmt.Errorf("error marshaling JSON: %w", err)
 		return
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		err = fmt.Errorf("unexpected status code: %d\nResponse: %s", resp.StatusCode, body)
+	var (
+		responseBody []byte
+		statusCode   int
+		lastErr      error
+	)
+
+	backoff := rpcInitialBackoff
+
+	for attempt := 1; attempt <= rpcMaxAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		default:
+		}
+
+		responseBody, statusCode, lastErr = performRPCRequest(ctx, client, endpoint, jsonData)
+		if lastErr == nil && statusCode == http.StatusOK {
+			break
+		}
+
+		shouldRetry := false
+		if lastErr != nil {
+			shouldRetry = isRetryableRPCError(lastErr)
+			lastErr = fmt.Errorf("HTTP request failed: %w", lastErr)
+			log.Debug(lastErr.Error())
+		} else {
+			lastErr = fmt.Errorf("unexpected status code: %d\nResponse: %s", statusCode, responseBody)
+			shouldRetry = isRetryableStatus(statusCode)
+			log.Debug(lastErr.Error())
+		}
+
+		if !shouldRetry || attempt == rpcMaxAttempts {
+			err = lastErr
+			return
+		}
+
+		log.Debug("retrying RPC request", "attempt", attempt, "err", lastErr)
+
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		case <-time.After(backoff):
+		}
+
+		backoff *= rpcBackoffMultiplier
+	}
+
+	if lastErr != nil {
+		err = lastErr
 		return
 	}
+
+	body := responseBody
 
 	var rpcResp RPCResponse
 	err = json.Unmarshal(body, &rpcResp)
 	if err != nil {
-		err = fmt.Errorf("failed to unmarshal RPC response", "err", err)
+		err = fmt.Errorf("failed to unmarshal RPC response: %w", err)
 		return
 	}
 
@@ -227,4 +267,54 @@ func getCertExpiry(cert tls.Certificate) (time.Duration, error) {
 		return 0, err
 	}
 	return time.Until(x509Cert.NotAfter), nil
+}
+
+func performRPCRequest(ctx context.Context, client *http.Client, endpoint string, jsonData []byte) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, err
+	}
+
+	return body, resp.StatusCode, nil
+}
+
+func isRetryableRPCError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+
+	return false
+}
+
+func isRetryableStatus(status int) bool {
+	if status == http.StatusTooManyRequests || status == http.StatusRequestTimeout {
+		return true
+	}
+
+	return status >= http.StatusInternalServerError
 }
