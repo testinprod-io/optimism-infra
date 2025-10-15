@@ -189,6 +189,7 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 	var (
 		responseBody []byte
 		statusCode   int
+		rpcErr       error
 		lastErr      error
 	)
 
@@ -202,23 +203,21 @@ func (p *Poller) pollRPC(ctx context.Context) (err error) {
 		default:
 		}
 
-		responseBody, statusCode, lastErr = performRPCRequest(ctx, client, endpoint, jsonData)
-		if lastErr == nil && statusCode == http.StatusOK {
+		responseBody, statusCode, rpcErr = performRPCRequest(ctx, client, endpoint, jsonData)
+		if rpcErr == nil && statusCode == http.StatusOK {
 			break
 		}
 
 		shouldRetry := false
-		if lastErr != nil {
-			shouldRetry = isRetryableRPCError(lastErr)
-			lastErr = fmt.Errorf("HTTP request failed: %w", lastErr)
-			log.Debug(lastErr.Error())
+		if rpcErr != nil {
+			shouldRetry = isRetryableRPCError(rpcErr)
+			lastErr = fmt.Errorf("HTTP request failed: %w", rpcErr)
 		} else {
 			lastErr = fmt.Errorf("unexpected status code: %d\nResponse: %s", statusCode, responseBody)
 			shouldRetry = isRetryableStatus(statusCode)
-			log.Debug(lastErr.Error())
 		}
 
-		if !shouldRetry || attempt == rpcMaxAttempts {
+		if !shouldRetry || attempt >= rpcMaxAttempts {
 			err = lastErr
 			return
 		}
